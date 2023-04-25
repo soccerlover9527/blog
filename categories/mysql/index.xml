@@ -1,0 +1,20 @@
+<rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0"><channel><title>Mysql - Category - 融融冶冶黄</title><link>http://blog.soccerlover.com/categories/mysql/</link><description>Mysql - Category - 融融冶冶黄</description><generator>Hugo -- gohugo.io</generator><language>zh-CN</language><managingEditor>soccerlover9527@gmail.com (融融冶冶黄)</managingEditor><webMaster>soccerlover9527@gmail.com (融融冶冶黄)</webMaster><lastBuildDate>Sun, 23 Apr 2023 20:55:10 +0800</lastBuildDate><atom:link href="http://blog.soccerlover.com/categories/mysql/" rel="self" type="application/rss+xml"/><item><title>Mvcc</title><link>http://blog.soccerlover.com/posts/databases/mysql/mvcc/</link><pubDate>Sun, 23 Apr 2023 20:55:10 +0800</pubDate><author>soccerlover</author><guid>http://blog.soccerlover.com/posts/databases/mysql/mvcc/</guid><description>MVCC 简介 MVCC，即Multi-Version Concurrency Control （多版本并发控制）。它是一种并发控制的方法，一般在数据库管理系统中，实现对数据库的并发访问。 InnoDB 是一个支持MVCC存储引擎。它保留有关已更改行的旧版本的信息，以支持并发和回滚等事务功能。旧版本信息存储在被称为回滚段（roll segment）的数据结构中的系统表空间或者 undo 表空间中。 InnoDB 使用回滚段中的信息来执行事务回滚中所需的撤消操作。它还使用这些信息来构建行的早期版本以进行一致的读取。
+相关基本概念点 事务版本号 在每次事务开始都会获取一个自增的事务ID，通过这个ID我们可以判断事务执行的先后顺序。
+隐式字段 在内部，InnoDB 存储在数据库中的每一行都有三个隐式字段：
+DB_TRX_ID 标识插入或者更新该行的最新的事务的id。（删除在事务中也会被视为更新） DB_ROLL_PTR 该指针指向上文提到的回滚段中的 undo log，也就是上一个版本的该行记录。 DB_ROW_ID 隐含的自增主键，如果主键不是自增这行没有使用 上图是在只有一个事务（10001）进行操作时一行记录的状态。
+版本链 当多个事务并行的更新某一行的数据时，不同事物对改行数据的修改会产生多个版本，然后通过回滚指针（DB_ROLL_PTR）连成一个链表，这个就是版本链，如下图所示。
+可以看见，事务链是通过（DB_ROLL_PTR）进行关联，且存放在 undo log 中。
+Undo log 回滚日志，用于事务回滚时恢复上一个版本的数据，记录的是当前事务的反向操作，例如，该事物插入了一条数据，那么 undo log 记录的是一个 DELETE 操作，如果是一个 UPDATE 操作，那么 undo log 记录的是 UPDATE 到原始数据的操作。
+所以 undo log 可以分为两类 undo log：
+insert undo log 记录 INSERT 语句的 undo log
+update undo log 记录 UPDATE DELETE 语句的 undo log</description></item><item><title>Mysql 三大日志</title><link>http://blog.soccerlover.com/posts/databases/mysql/mysql%E4%B8%89%E5%A4%A7%E6%97%A5%E5%BF%97/</link><pubDate>Sun, 23 Apr 2023 20:55:10 +0800</pubDate><author>soccerlover</author><guid>http://blog.soccerlover.com/posts/databases/mysql/mysql%E4%B8%89%E5%A4%A7%E6%97%A5%E5%BF%97/</guid><description>Mysql 中常见的三种日志，二进制日志（binlog）事务日志（redo log 、undo log）
+bin log binlog 是Mysql 数据用于记录数据库执行写入操作（新增编辑删除）操作，以二进制形式保存的逻辑日志（可以简单理解为存储的是执行的sql语句），注意这个日志是 Server 层记录的，无论任何引擎进行操作都会进行记录。
+binlog可以用于主从复制或者数据恢复（mysqlbinlog工具）中。有三种写入模式
+statement模式 每一条修改数据的sql都会记录到 binlog 中，slave 在复制的时候，会将该日志解析为相同的 sql 在slave中进行执行。
+优点：不需要记录每一行的具体变化，大大减少了每条日志的大小，提高了IO效率和传输性能 缺点：如果sql 语句中包含有与当前环境有关的函数，例如：date(),sleep() 等，会造成主从数据不一致 ROW模式 基于行的复制，不记录每条 sql 语句的上下文信息，仅需要记录哪条数据被修改了，修改后的内容是什么，不会与上下文或者环境相关。
+优点：row 日志记录仅仅记录了哪行记录的修改后的值，不会出现函数调用导致主从数据不一致的问题 缺点：如果该条sql修改了大量行的多个字段，会导致产生大量的bin log日志。 Mixed 模式 混合模式是上面两种模式优劣结合的折中产物，在Mixed模式下，server 会对每条 sql 进行分析，根据不同sql 走不同的模式进行日志记录。
+redo log redo log 是 InnoDB 特有的用来保证事务持久性的日志。
+持久性 redo log 保证了事务的持久性，对于一个事务来说，只要提交成功，对于数据库的修改就会被永久保留下来了，不可能因为任何原因回到原来的状态。
+我们都知道，数据记录是保存在数据页上面，如果每次事务提交都将事务所涉及到的数据页全部写入磁盘当中，就能保证事务的持久性，但是很明显这个方法会引起严重的性能问题：
+一个事务可能只会影响一个数据页中一条记录，为了保证持久性将整个数据页重新刷入磁盘太浪费磁盘IO资源 如果事务涉及很多个数据且这些数据分散在很多数据页上，这些数据页在物理上并不是连续的，导致一次事务提交大量数据页随机写 所以基于 WAL（write ahead log）这种设计思想，对于数据文件修改前，先记录修改日志，这个日志是顺序写的，最大限度保证这个日志的写入效率。
+redo log 如何保证持久性的 当数据库对数据进行修改的时候，需要把数据从磁盘读入 buffer pool 中，然后在buffer pool 中对数据进行修改，这个时候buffer pool 中的数据和磁盘上的数据页内容不一致，这个时候称 buffer pool 中被修改的页为脏页（dirty page）。redo log 此时会同时记录事务对数据页做了哪些修改，产生一个 redo log 日志，然后写入redo log buffer 中，后续某一个时间点写入到 redo log file 中。</description></item></channel></rss>
